@@ -27,11 +27,17 @@ jobs:
     - uses: actions/cache@v4
       with:
         path: droidev
-        key: droidev-${{ hashFiles('.github/workflows/release.yml', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'vcpkg/*.json', '.git/modules/vcpkg/bin/HEAD') }}
+        key: nvgt-android-droidev-2026
       id: cache
-    - name: build dependencies
+    - name: download pre-built dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-      run: python3 vcpkg/build_dependencies.py --archive arm64-android
+      run: |
+        echo "Downloading pre-built dependencies..."
+        curl -L -o droidev.zip https://nvgt.dev/droidev.zip
+        echo "Unzipping dependencies..."
+        unzip -q droidev.zip
+        ls -la
+        rm droidev.zip
     - name: create release directory
       run: mkdir -p release
     - name: keystore
@@ -44,9 +50,10 @@ jobs:
       run: |
         cd jni
         chmod +x gradlew
-        ./gradlew assembleRunnerRelease AssembleStubRelease --no-daemon -Pandroid.injected.signing.store.file=android.keystore -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} -Pandroid.injected.signing.key.alias=app -Pandroid.injected.signing.key.password="${{env.ANDROID_RUNNER_KEYSTORE_PW}}
+        ./gradlew assembleRunnerRelease AssembleStubRelease --no-daemon -Pandroid.injected.signing.store.file=android.keystore -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} -Pandroid.injected.signing.key.alias=app -Pandroid.injected.signing.key.password="${{env.ANDROID_RUNNER_KEYSTORE_PW}}"
         mv build/outputs/apk/runner/release/nvgt-runner-release.apk ../release/nvgt.apk
         cd ..
+        ls -la release/
     - name: upload
       uses: actions/upload-artifact@v4
       with:
