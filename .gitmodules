@@ -4,4 +4,4 @@
 	branch = master
 [submodule "vcpkg/bin"]
 	path = vcpkg/bin
-	url = https://github.com/microsoft/vcpkg
+	url = https://github.com/microsoft/vcpkg.git
