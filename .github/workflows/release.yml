@@ -79,6 +79,7 @@ jobs:
       run: |
         cd jni
         ./gradlew assembleRunnerRelease AssembleStubRelease --no-daemon \
+          -Dorg.gradle.jvmargs="-Xmx4g" \
           -Pandroid.injected.signing.store.file=android.keystore \
           -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} \
           -Pandroid.injected.signing.key.alias=app \
