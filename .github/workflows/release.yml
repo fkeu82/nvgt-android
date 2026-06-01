@@ -1,0 +1,98 @@
+name: release
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  android_build:
+    runs-on: macos-14
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+    - uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
+    - uses: nttld/setup-ndk@v1
+      id: setup-ndk
+      with:
+        ndk-version: r27
+        link-to-sdk: true
+        add-to-path: true
+    - name: set ndk environ
+      run: echo "ANDROID_NDK_HOME=${{steps.setup-ndk.outputs.ndk-path}}" >> $GITHUB_ENV
+    - uses: actions/cache@v4
+      with:
+        path: droidev
+        key: droidev-${{ hashFiles('.github/workflows/release.yml', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'vcpkg/*.json', '.git/modules/vcpkg/bin/HEAD') }}
+      id: cache
+    - name: build dependencies
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      run: python3 vcpkg/build_dependencies.py --archive arm64-android
+    - name: keystore
+      run: |
+        cd jni
+        keytool -genkey -keyalg RSA -keysize 2048 -v -keystore android.keystore -dname cn=NVGT -storepass Android1422207 -validity 10000 -alias app
+        echo "ANDROID_RUNNER_KEYSTORE_PW=Android1422207">>$GITHUB_ENV
+        cd ..
+    - name: build
+      run: |
+        cd jni
+        ./gradlew assembleRunnerRelease AssembleStubRelease --no-daemon -Pandroid.injected.signing.store.file=android.keystore -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} -Pandroid.injected.signing.key.alias=app -Pandroid.injected.signing.key.password="${{env.ANDROID_RUNNER_KEYSTORE_PW}}"
+        mv build/outputs/apk/runner/release/nvgt-runner-release.apk ../release/nvgt.apk
+        cd ..
+    - name: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-release
+        path: 'release'
+
+  release_apk:
+    runs-on: ubuntu-latest
+    needs: android_build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v5
+    - uses: actions/download-artifact@v4
+      with:
+        name: android-release
+        path: artifacts
+    - name: set version
+      run: |
+        VERSION=$(cat version)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+    - name: prepare release
+      run: |
+        mkdir -p release
+        cp artifacts/nvgt.apk release/nvgt_android_${{ env.VERSION }}.apk
+    - name: create release
+      uses: softprops/action-gh-release@v2
+      with:
+        body: |
+          NVGT Android 汉化版 ${{ env.VERSION }}
+          
+          此版本完全保留了电脑版的所有功能，包括：
+          - 完整的 Angelscript 脚本支持
+          - 音频引擎 (SDL3 + miniaudio)
+          - TTS 语音合成
+          - 网络功能
+          - 文件系统操作
+          - 数据库支持
+          - 物理引擎
+          - 所有标准库和插件
+          
+          使用方法：
+          1. 下载 APK 文件
+          2. 安装到 Android 设备
+          3. 享受与电脑版完全一致的体验
+        files: release/nvgt_android_${{ env.VERSION }}.apk
+        tag_name: android-${{ env.VERSION }}
+        release_name: NVGT Android 汉化版 ${{ env.VERSION }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
