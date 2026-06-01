@@ -4,94 +4,50 @@ on:
   push:
     branches:
       - master
-
 jobs:
   android_build:
     runs-on: macos-14
-    timeout-minutes: 45
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
-    
-    - name: Debug - Check directory structure
-      run: |
-        echo "=== Current Directory ==="
-        pwd
-        ls -la
-        echo "=== vcpkg directory ==="
-        ls -la vcpkg/ || echo "vcpkg not found"
-        echo "=== vcpkg/bin directory ==="
-        ls -la vcpkg/bin/ || echo "vcpkg/bin not found"
-        echo "=== jni directory ==="
-        ls -la jni/ || echo "jni not found"
-    
-    - name: Setup Java
-      uses: actions/setup-java@v4
+    - uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
         cache: 'gradle'
-    
-    - name: Setup NDK
+    - uses: nttld/setup-ndk@v1
       id: setup-ndk
-      uses: nttld/setup-ndk@v1
       with:
         ndk-version: r27
         link-to-sdk: true
         add-to-path: true
-    
-    - name: Set NDK environment
+    - name: set ndk environ
       run: echo "ANDROID_NDK_HOME=${{steps.setup-ndk.outputs.ndk-path}}" >> $GITHUB_ENV
-    
-    - name: Cache dependencies
-      uses: actions/cache@v4
+    - uses: actions/cache@v4
       with:
         path: droidev
         key: droidev-${{ hashFiles('.github/workflows/release.yml', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'vcpkg/*.json', '.git/modules/vcpkg/bin/HEAD') }}
       id: cache
-    
-    - name: Build dependencies
+    - name: build dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-      run: |
-        if [ ! -d "vcpkg/bin" ]; then
-          echo "ERROR: vcpkg/bin directory not found!"
-          echo "Please ensure submodules are properly committed."
-          exit 1
-        fi
-        python3 vcpkg/build_dependencies.py --archive arm64-android
-    
-    - name: Create release directory
+      run: python3 vcpkg/build_dependencies.py --archive arm64-android
+    - name: create release directory
       run: mkdir -p release
-    
-    - name: Generate keystore
+    - name: keystore
       run: |
         cd jni
         keytool -genkey -keyalg RSA -keysize 2048 -v -keystore android.keystore -dname cn=NVGT -storepass Android1422207 -validity 10000 -alias app
         echo "ANDROID_RUNNER_KEYSTORE_PW=Android1422207" >> $GITHUB_ENV
         cd ..
-    
-    - name: Fix gradlew permissions
+    - name: build
       run: |
         cd jni
         chmod +x gradlew
-        ls -la gradlew
-    
-    - name: Build Android APK
-      run: |
-        cd jni
-        ./gradlew assembleRunnerRelease AssembleStubRelease --no-daemon \
-          -Pandroid.injected.signing.store.file=android.keystore \
-          -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} \
-          -Pandroid.injected.signing.key.alias=app \
-          -Pandroid.injected.signing.key.password="${{env.ANDROID_RUNNER_KEYSTORE_PW}}"
-        ls -la build/outputs/apk/runner/release/
+        ./gradlew assembleRunnerRelease AssembleStubRelease --no-daemon -Pandroid.injected.signing.store.file=android.keystore -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} -Pandroid.injected.signing.key.alias=app -Pandroid.injected.signing.key.password="${{env.ANDROID_RUNNER_KEYSTORE_PW}}
         mv build/outputs/apk/runner/release/nvgt-runner-release.apk ../release/nvgt.apk
         cd ..
-        ls -la release/
-    
-    - name: Upload APK
+    - name: upload
       uses: actions/upload-artifact@v4
       with:
         name: android-release
@@ -104,26 +60,20 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-    
-    - name: Download APK
-      uses: actions/download-artifact@v4
+    - uses: actions/checkout@v5
+    - uses: actions/download-artifact@v4
       with:
         name: android-release
         path: artifacts
-    
-    - name: Set version
+    - name: set version
       run: |
         VERSION=$(cat version)
         echo "VERSION=$VERSION" >> $GITHUB_ENV
-    
-    - name: Prepare release
+    - name: prepare release
       run: |
         mkdir -p release
         cp artifacts/nvgt.apk release/nvgt_android_${{ env.VERSION }}.apk
-    
-    - name: Create Release
+    - name: create release
       uses: softprops/action-gh-release@v2
       with:
         body: |
