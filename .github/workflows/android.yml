@@ -1,33 +1,32 @@
-name: Android Build
+name: Build NVGT Android APK
 
 on:
   workflow_dispatch:
   push:
     branches:
       - master
-  pull_request:
-    branches:
-      - master
 
-concurrency:
-  group: android-build-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: write
+  packages: read
 
 jobs:
-  android_build:
-    runs-on: macos-14
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
 
-    - name: Setup Java
+    - name: Set up Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
         cache: 'gradle'
 
-    - name: Setup NDK
+    - name: Set up Android NDK
       id: setup-ndk
       uses: nttld/setup-ndk@v1
       with:
@@ -35,84 +34,120 @@ jobs:
         link-to-sdk: true
         add-to-path: true
 
-    - name: Set NDK environment
-      run: echo "ANDROID_NDK_HOME=${{steps.setup-ndk.outputs.ndk-path}}" >> $GITHUB_ENV
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        api-level: 35
+        build-tools: 35.0.0
+        ndk: 27.0.12077973
 
-    - name: Download pre-built droidev dependencies
+    - name: Set up environment variables
       run: |
-        curl -L -o droidev.zip https://nvgt.dev/droidev.zip
-        unzip -q droidev.zip
+        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
+
+    - name: Download droidev dependencies
+      run: |
+        echo "Downloading droidev.zip..."
+        curl -L -o /tmp/droidev.zip https://nvgt.dev/droidev.zip
+        
+        echo "Unzipping droidev.zip..."
+        mkdir -p droidev
+        cd droidev
+        unzip -q /tmp/droidev.zip
+        
+        echo "Directory structure:"
+        ls -la
+        ls -la lib 2>/dev/null || echo "lib not found"
+        ls -la include 2>/dev/null || echo "include not found"
+        
+        cd ..
+        mv droidev/* ./
+        rmdir droidev
+        
+        echo "Current directory structure:"
         ls -la
 
-    - name: Generate keystore
+    - name: Set gradlew executable permission
+      run: |
+        chmod +x jni/gradlew
+        ls -la jni/
+
+    - name: Create release directory
+      run: mkdir -p release
+
+    - name: Generate debug keystore
       run: |
         cd jni
-        keytool -genkey -keyalg RSA -keysize 2048 -v -keystore android.keystore -dname cn=NVGT-Android-CN -storepass Android1422207 -validity 10000 -alias app
+        keytool -genkey -keyalg RSA -keysize 2048 -v \
+          -keystore android.keystore \
+          -dname "CN=NVGT, OU=Dev, O=NVGT, L=City, ST=State, C=CN" \
+          -storepass Android1422207 \
+          -keypass Android1422207 \
+          -validity 10000 \
+          -alias app
         cd ..
 
     - name: Build Android APK
       run: |
         cd jni
-        chmod +x gradlew
-        ./gradlew assembleRunnerRelease --no-daemon -Pandroid.injected.signing.store.file=android.keystore -Pandroid.injected.signing.store.password=Android1422207 -Pandroid.injected.signing.key.alias=app -Pandroid.injected.signing.key.password=Android1422207 --stacktrace
-        mv build/outputs/apk/runner/release/nvgt-runner-release.apk ../release/nvgt.apk
+        
+        echo "Building APK with Gradle..."
+        ./gradlew clean
+        
+        ./gradlew assembleRunnerRelease \
+          --no-daemon \
+          --info \
+          -Pandroid.injected.signing.store.file=android.keystore \
+          -Pandroid.injected.signing.store.password=Android1422207 \
+          -Pandroid.injected.signing.key.alias=app \
+          -Pandroid.injected.signing.key.password=Android1422207
+        
         cd ..
+        
+        echo "Checking APK output..."
+        ls -la jni/build/outputs/apk/runner/release/
+        
+        echo "Copying APK to release directory..."
+        mkdir -p release
+        cp jni/build/outputs/apk/runner/release/nvgt-runner-release.apk release/nvgt.apk
+        
         ls -la release/
 
-    - name: Upload APK
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: nvgt-android-apk
         path: release/nvgt.apk
+        retention-days: 30
 
-  release:
-    runs-on: ubuntu-latest
-    needs: android_build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    permissions:
-      contents: write
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-
-    - name: Download APK
-      uses: actions/download-artifact@v4
-      with:
-        name: nvgt-android-apk
-        path: artifacts
-
-    - name: Set version
+    - name: Set version number
       run: |
         VERSION=$(cat version)
         echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-    - name: Rename APK
-      run: |
-        mkdir -p release
-        mv artifacts/nvgt.apk release/nvgt_android_${{ env.VERSION }}.apk
-
-    - name: Create Release
+    - name: Create release
       uses: softprops/action-gh-release@v2
       with:
+        files: release/nvgt.apk
+        tag_name: android-${{ env.VERSION }}
+        name: NVGT Android 汉化版 ${{ env.VERSION }}
         body: |
           NVGT Android 汉化版 ${{ env.VERSION }}
           
-          此版本完全保留了电脑版的所有功能，包括：
+          此版本完全保留了电脑版的所有功能：
           - 完整的 Angelscript 脚本支持
-          - 音频引擎 (SDL3 + miniaudio)
+          - 音频引擎（SDL3 + miniaudio）
           - TTS 语音合成
           - 网络功能
           - 文件系统操作
           - 数据库支持
           - 物理引擎
-          - 所有标准库和插件
           
           使用方法：
-          1. 下载 APK 文件
-          2. 安装到 Android 设备
-          3. 享受与电脑版完全一致的体验
-        files: release/nvgt_android_${{ env.VERSION }}.apk
-        tag_name: android-${{ env.VERSION }}
-        release_name: NVGT Android 汉化版 ${{ env.VERSION }}
+          1. 下载 nvgt.apk 文件
+          2. 安装到 Android 9+ (API 28+) 设备（支持 ARM64）
+          3. 享受与电脑版完全一致的体验！
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
