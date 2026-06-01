@@ -46,41 +46,19 @@ jobs:
         # 下载 droidev.zip
         curl -L -o droidev.zip https://nvgt.dev/droidev.zip
         
-        # 解压到项目根目录
-        unzip -q droidev.zip
+        # 关键：先创建 droidev 目录，再解压进去
+        mkdir -p droidev
+        unzip -q droidev.zip -d droidev
         
-        # 调试：显示解压后的目录结构
-        echo "=== 解压后的目录结构 ==="
-        ls -la
-        
-        echo "=== droidev 目录内容 ==="
-        ls -la droidev/ 2>/dev/null || echo "droidev 目录不存在"
-        
+        # 验证
         echo "=== droidev/lib 目录内容 ==="
-        ls -la droidev/lib/ 2>/dev/null || echo "droidev/lib 目录不存在"
+        ls droidev/lib/
         
-        echo "=== 检查 libtiny-aes-c.a ==="
-        find . -name "libtiny-aes-c.a" 2>/dev/null || echo "libtiny-aes-c.a 未找到"
-        
-        # 确保目录结构正确（如果解压后是多层目录，修复它）
-        if [ -d "droidev/droidev" ]; then
-          echo "检测到嵌套目录，修复中..."
-          mv droidev/droidev/* droidev/
-          rm -rf droidev/droidev
-        fi
-        
-        # 再次检查
-        echo "=== 修复后的 droidev 目录 ==="
-        ls -la droidev/ 2>/dev/null || echo "droidev 目录不存在"
-        
-        # 验证关键文件存在
         if [ ! -f "droidev/lib/libtiny-aes-c.a" ]; then
           echo "ERROR: libtiny-aes-c.a 不存在！"
-          find . -name "libtiny-aes-c.a" 2>/dev/null
           exit 1
         fi
-        
-        echo "=== 依赖验证成功 ==="
+        echo "依赖验证成功！"
     
     - name: create release directory
       run: mkdir -p release
