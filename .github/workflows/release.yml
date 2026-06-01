@@ -7,53 +7,107 @@ on:
 jobs:
   android_build:
     runs-on: macos-14
+    timeout-minutes: 60
     steps:
-    - uses: actions/checkout@v5
+    - name: Checkout code
+      uses: actions/checkout@v5
       with:
         submodules: recursive
-    - uses: actions/setup-java@v4
+        fetch-depth: 0
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
         cache: 'gradle'
-    - uses: nttld/setup-ndk@v1
+    
+    - name: Setup NDK
       id: setup-ndk
+      uses: nttld/setup-ndk@v1
       with:
         ndk-version: r27
         link-to-sdk: true
         add-to-path: true
+    
     - name: set ndk environ
       run: echo "ANDROID_NDK_HOME=${{steps.setup-ndk.outputs.ndk-path}}" >> $GITHUB_ENV
-    - uses: actions/cache@v4
+    
+    - name: Cache dependencies
+      uses: actions/cache@v4
       with:
         path: droidev
-        key: nvgt-android-droidev-2026
+        key: droidev-${{ hashFiles('.github/workflows/release.yml') }}
       id: cache
+    
     - name: download pre-built dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       run: |
-        echo "Downloading pre-built dependencies..."
+        # 下载 droidev.zip
         curl -L -o droidev.zip https://nvgt.dev/droidev.zip
-        echo "Unzipping dependencies..."
+        
+        # 解压到项目根目录
         unzip -q droidev.zip
+        
+        # 调试：显示解压后的目录结构
+        echo "=== 解压后的目录结构 ==="
         ls -la
-        rm droidev.zip
+        
+        echo "=== droidev 目录内容 ==="
+        ls -la droidev/ 2>/dev/null || echo "droidev 目录不存在"
+        
+        echo "=== droidev/lib 目录内容 ==="
+        ls -la droidev/lib/ 2>/dev/null || echo "droidev/lib 目录不存在"
+        
+        echo "=== 检查 libtiny-aes-c.a ==="
+        find . -name "libtiny-aes-c.a" 2>/dev/null || echo "libtiny-aes-c.a 未找到"
+        
+        # 确保目录结构正确（如果解压后是多层目录，修复它）
+        if [ -d "droidev/droidev" ]; then
+          echo "检测到嵌套目录，修复中..."
+          mv droidev/droidev/* droidev/
+          rm -rf droidev/droidev
+        fi
+        
+        # 再次检查
+        echo "=== 修复后的 droidev 目录 ==="
+        ls -la droidev/ 2>/dev/null || echo "droidev 目录不存在"
+        
+        # 验证关键文件存在
+        if [ ! -f "droidev/lib/libtiny-aes-c.a" ]; then
+          echo "ERROR: libtiny-aes-c.a 不存在！"
+          find . -name "libtiny-aes-c.a" 2>/dev/null
+          exit 1
+        fi
+        
+        echo "=== 依赖验证成功 ==="
+    
     - name: create release directory
       run: mkdir -p release
+    
     - name: keystore
       run: |
         cd jni
         keytool -genkey -keyalg RSA -keysize 2048 -v -keystore android.keystore -dname cn=NVGT -storepass Android1422207 -validity 10000 -alias app
         echo "ANDROID_RUNNER_KEYSTORE_PW=Android1422207" >> $GITHUB_ENV
         cd ..
-    - name: build
+    
+    - name: Fix gradlew permissions
       run: |
         cd jni
         chmod +x gradlew
-        ./gradlew assembleRunnerRelease AssembleStubRelease --no-daemon -Pandroid.injected.signing.store.file=android.keystore -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} -Pandroid.injected.signing.key.alias=app -Pandroid.injected.signing.key.password="${{env.ANDROID_RUNNER_KEYSTORE_PW}}"
+    
+    - name: build
+      run: |
+        cd jni
+        ./gradlew assembleRunnerRelease AssembleStubRelease --no-daemon \
+          -Pandroid.injected.signing.store.file=android.keystore \
+          -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} \
+          -Pandroid.injected.signing.key.alias=app \
+          -Pandroid.injected.signing.key.password="${{env.ANDROID_RUNNER_KEYSTORE_PW}}"
         mv build/outputs/apk/runner/release/nvgt-runner-release.apk ../release/nvgt.apk
         cd ..
-        ls -la release/
+    
     - name: upload
       uses: actions/upload-artifact@v4
       with:
@@ -67,39 +121,32 @@ jobs:
     permissions:
       contents: write
     steps:
-    - uses: actions/checkout@v5
-    - uses: actions/download-artifact@v4
+    - name: Checkout code
+      uses: actions/checkout@v5
+    
+    - name: Download APK
+      uses: actions/download-artifact@v4
       with:
         name: android-release
         path: artifacts
-    - name: set version
+    
+    - name: Set version
       run: |
         VERSION=$(cat version)
         echo "VERSION=$VERSION" >> $GITHUB_ENV
-    - name: prepare release
+    
+    - name: Prepare release
       run: |
         mkdir -p release
         cp artifacts/nvgt.apk release/nvgt_android_${{ env.VERSION }}.apk
-    - name: create release
+    
+    - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         body: |
           NVGT Android 汉化版 ${{ env.VERSION }}
           
-          此版本完全保留了电脑版的所有功能，包括：
-          - 完整的 Angelscript 脚本支持
-          - 音频引擎 (SDL3 + miniaudio)
-          - TTS 语音合成
-          - 网络功能
-          - 文件系统操作
-          - 数据库支持
-          - 物理引擎
-          - 所有标准库和插件
-          
-          使用方法：
-          1. 下载 APK 文件
-          2. 安装到 Android 设备
-          3. 享受与电脑版完全一致的体验
+          此版本完全保留了电脑版的所有功能。
         files: release/nvgt_android_${{ env.VERSION }}.apk
         tag_name: android-${{ env.VERSION }}
         release_name: NVGT Android 汉化版 ${{ env.VERSION }}
