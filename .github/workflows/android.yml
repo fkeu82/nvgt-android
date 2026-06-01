@@ -19,8 +19,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
-      with:
-        submodules: true
 
     - name: Setup Java
       uses: actions/setup-java@v4
@@ -40,30 +38,26 @@ jobs:
     - name: Set NDK environment
       run: echo "ANDROID_NDK_HOME=${{steps.setup-ndk.outputs.ndk-path}}" >> $GITHUB_ENV
 
-    - name: Cache dependencies
-      id: cache
-      uses: actions/cache@v4
-      with:
-        path: droidev
-        key: droidev-${{ hashFiles('.github/workflows/android.yml', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'vcpkg/*.json', '.git/modules/vcpkg/bin/HEAD') }}
+    - name: Download pre-built droidev dependencies
+      run: |
+        curl -L -o droidev.zip https://nvgt.dev/droidev.zip
+        unzip -q droidev.zip
+        ls -la
 
-    - name: Build dependencies
-      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-      run: python3 vcpkg/build_dependencies.py --archive arm64-android
-
-    - name: Generate keystore for PR/fork
+    - name: Generate keystore
       run: |
         cd jni
         keytool -genkey -keyalg RSA -keysize 2048 -v -keystore android.keystore -dname cn=NVGT-Android-CN -storepass Android1422207 -validity 10000 -alias app
-        echo "ANDROID_RUNNER_KEYSTORE_PW=Android1422207">>$GITHUB_ENV
         cd ..
 
     - name: Build Android APK
       run: |
         cd jni
-        ./gradlew assembleRunnerRelease --no-daemon -Pandroid.injected.signing.store.file=android.keystore -Pandroid.injected.signing.store.password=${{env.ANDROID_RUNNER_KEYSTORE_PW}} -Pandroid.injected.signing.key.alias=app -Pandroid.injected.signing.key.password="${{env.ANDROID_RUNNER_KEYSTORE_PW}}"
+        chmod +x gradlew
+        ./gradlew assembleRunnerRelease --no-daemon -Pandroid.injected.signing.store.file=android.keystore -Pandroid.injected.signing.store.password=Android1422207 -Pandroid.injected.signing.key.alias=app -Pandroid.injected.signing.key.password=Android1422207 --stacktrace
         mv build/outputs/apk/runner/release/nvgt-runner-release.apk ../release/nvgt.apk
         cd ..
+        ls -la release/
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
@@ -89,8 +83,8 @@ jobs:
 
     - name: Set version
       run: |
-        python3 build/ci_set_version.py
-        echo "VERSION=$nvgt_version" >> $GITHUB_ENV
+        VERSION=$(cat version)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Rename APK
       run: |
