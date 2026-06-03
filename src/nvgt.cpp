@@ -271,7 +271,7 @@ protected:
 			displayHelp();
 			return Application::EXIT_OK;
 		} else if (mode == NVGT_VERSIONINFO) {
-			string ver = format("NVGT (NonVisual Gaming Toolkit) version %s, built on %s for %s %s", NVGT_VERSION, NVGT_VERSION_BUILD_TIME, Environment::osName(), Environment::osArchitecture());
+			string ver = format("NVGT (NonVisual Gaming Toolkit) version %s, built on %s for %s %s\n\nAndroid移植与编译工作: 枯木逢春 (Kumufengchun)\n\n版权信息:\nNVGT源代码: Copyright (c) 2022-2025 Sam Tupy\nAndroid移植版: Copyright (c) 2025 枯木逢春\n\n本软件基于 NVGT 官方项目进行移植和汉化，遵循原项目许可协议。\n", NVGT_VERSION, NVGT_VERSION_BUILD_TIME, Environment::osName(), Environment::osArchitecture());
 			if (config().hasOption("application.gui"))
 				message(ver, "version information");
 			else
