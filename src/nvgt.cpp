@@ -238,7 +238,12 @@ protected:
 			return script;
 		} else if (option == 4) {
 			// Package as APK (Android)
-			message("APK packaging feature coming soon!\n\nThis feature will let you package your NVGT scripts as standalone Android apps.", "APK Packaging");
+			#ifdef __ANDROID__
+			message("正在打开APK打包界面...\n\n选择一个.nvgt脚本文件，然后配置应用信息即可打包APK。", "APK打包");
+			android_launch_package_activity();
+			#else
+			message("APK打包功能仅在Android设备上可用。\n\n请使用NVGT Android版本来打包APK。", "APK打包");
+			#endif
 			mode = NVGT_EXIT;
 			return "";
 		} else if (option == 5 || option == 6) {

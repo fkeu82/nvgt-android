@@ -427,4 +427,38 @@ bool screen_reader_speak(const std::string& text, bool interrupt) { return andro
 bool screen_reader_braille(const std::string& text) { return false; }
 bool screen_reader_silence() { return android_screen_reader_silence(); }
 
+void android_launch_package_activity() {
+	JNIEnv* env = (JNIEnv*)SDL_GetAndroidJNIEnv();
+	if (!env) return;
+	
+	jclass activityClass = env->FindClass("android/app/Activity");
+	jmethodID currentActivity = env->GetStaticMethodID(activityClass, "currentActivity", "()Landroid/app/Activity;");
+	jobject activity = env->CallStaticObjectMethod(activityClass, currentActivity);
+	
+	if (!activity) {
+		// Try alternative method through SDL
+		return;
+	}
+	
+	jclass intentClass = env->FindClass("android/content/Intent");
+	jmethodID initIntent = env->GetMethodID(intentClass, "<init>", "(Landroid/content/Context;Ljava/lang/Class;)V");
+	
+	jclass packageActivityClass = env->FindClass("com/samtupy/nvgt/PackageActivity");
+	jmethodID getApplicationContext = env->GetMethodID(activityClass, "getApplicationContext", "()Landroid/content/Context;");
+	jobject context = env->CallObjectMethod(activity, getApplicationContext);
+	
+	jobject intent = env->NewObject(intentClass, initIntent, context, packageActivityClass);
+	
+	jclass unityPlayerClass = env->FindClass("com/samtupy/nvgt/NVGTGame");
+	jmethodID startActivity = env->GetMethodID(unityPlayerClass, "startActivity", "(Landroid/content/Intent;)V");
+	
+	// Call SDL's runOnUiThread equivalent
+	jclass SDLClass = env->FindClass("org/libsdl/app/SDLActivity");
+	jmethodID startActivity2 = env->GetStaticMethodID(SDLClass, "startActivity", "(Landroid/content/Intent;)V");
+	
+	if (startActivity2) {
+		env->CallStaticVoidMethod(SDLClass, startActivity2, intent);
+	}
+}
+
 #endif // __ANDROID__
