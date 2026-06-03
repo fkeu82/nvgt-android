@@ -208,13 +208,13 @@ protected:
 	}
 	std::string UILauncher() {
 		// If the user launches NVGT's compiler without a terminal, let them select what to do from various options provided by simple dialogs. Currently the choice selection is one-shot and then we exit, but it might be turned into some sort of do-loop later so that the user can perform multiple selections in one application run.
-		std::vector<string> options = {"`Run a script", "Compile a script in release mode", "Compile a script in debug mode", "View version information", "View command line options", "Visit nvgt.dev on the web", "~Exit"};
+		std::vector<string> options = {"`Run a script", "Compile a script in release mode", "Compile a script in debug mode", "`Package as APK (Android)", "View version information", "View command line options", "Visit nvgt.dev on the web", "~Exit"};
 		#ifdef NVGT_MOBILE
 		options[1].insert(options[1].begin(), '\0');
 		options[2].insert(options[2].begin(), '\0');
 		#endif
 		int option = message_box("NVGT Compiler", "Please select what you would like to do.", options, SDL_MESSAGEBOX_BUTTONS_LEFT_TO_RIGHT);
-		if (option <= 0 || option >= 7) {
+		if (option <= 0 || option >= 8) {
 			mode = NVGT_EXIT;
 			return "";
 		} else if (option >= 1 && option <= 3) {
@@ -236,10 +236,15 @@ protected:
 			if (option > 1) g_debug = option == 3;
 			mode = option == 1 ? NVGT_RUN : NVGT_COMPILE;
 			return script;
-		} else if (option == 4 || option == 5) {
-			mode = option == 4 ? NVGT_VERSIONINFO : NVGT_HELP;
+		} else if (option == 4) {
+			// Package as APK (Android)
+			message("APK packaging feature coming soon!\n\nThis feature will let you package your NVGT scripts as standalone Android apps.", "APK Packaging");
+			mode = NVGT_EXIT;
 			return "";
-		} else if (option == 6) {
+		} else if (option == 5 || option == 6) {
+			mode = option == 5 ? NVGT_VERSIONINFO : NVGT_HELP;
+			return "";
+		} else if (option == 7) {
 			mode = NVGT_EXIT;
 			urlopen("https://nvgt.dev");
 			return "";
