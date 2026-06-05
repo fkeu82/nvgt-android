@@ -1,0 +1,264 @@
+// NVGT Android 测试游戏 - 简单演示
+// 支持触摸手势控制
+
+// 包含必要的头文件
+#include "touch.nvgt"
+#include "menu.nvgt"
+#include "speech.nvgt"
+
+// 游戏状态
+string game_state = "menu"; // menu, playing, gameover
+int score = 0;
+int lives = 3;
+int target_x = 0;
+int target_y = 0;
+int player_x = 5;
+int player_y = 5;
+timer game_timer;
+sound_pool sp;
+
+void main()
+{
+    // 初始化音效池
+    sp.load_stereo_synth_sound(440, 0.1, SINE, 1, "beep");
+    sp.load_stereo_synth_sound(220, 0.2, SQUARE, 2, "hit");
+    sp.load_stereo_synth_sound(880, 0.15, TRIANGLE, 3, "collect");
+    sp.load_stereo_synth_sound(110, 0.3, SAWTOOTH, 4, "gameover");
+    
+    // 显示主菜单
+    show_main_menu();
+}
+
+void show_main_menu()
+{
+    game_state = "menu";
+    speak("欢迎来到 NVGT Android 测试游戏！", true);
+    wait(1.0);
+    
+    menu main_menu;
+    main_menu.add_item("开始游戏");
+    main_menu.add_item("游戏说明");
+    main_menu.add_item("退出");
+    
+    int choice = main_menu.run("请选择:");
+    
+    switch(choice)
+    {
+        case 0:
+            start_game();
+            break;
+        case 1:
+            show_instructions();
+            break;
+        case 2:
+            exit();
+            break;
+    }
+}
+
+void show_instructions()
+{
+    speak("游戏说明", true);
+    wait(0.5);
+    speak("使用左滑和右滑来左右移动玩家", true);
+    wait(0.5);
+    speak("使用上滑和下滑来上下移动玩家", true);
+    wait(0.5);
+    speak("收集屏幕上的目标来获得分数", true);
+    wait(0.5);
+    speak("双击可以使用特殊技能", true);
+    wait(0.5);
+    speak("长按可以重新开始游戏", true);
+    wait(0.5);
+    
+    wait_for_key_press();
+    show_main_menu();
+}
+
+void start_game()
+{
+    game_state = "playing";
+    score = 0;
+    lives = 3;
+    player_x = 5;
+    player_y = 5;
+    spawn_target();
+    game_timer.restart();
+    
+    speak("游戏开始！祝你好运！", true);
+    sp.play_stereo(1, 0.5, 0.5, false, 0);
+    
+    // 游戏主循环
+    while(game_state == "playing")
+    {
+        handle_input();
+        update_game();
+        render();
+        wait(0.016); // 约60FPS
+    }
+    
+    if(game_state == "gameover")
+    {
+        show_game_over();
+    }
+}
+
+void handle_input()
+{
+    // 处理触摸手势
+    if(touch_available())
+    {
+        // 检查滑动手势
+        if(touch_swipe_left())
+        {
+            player_x--;
+            if(player_x < 0) player_x = 0;
+            sp.play_stereo(1, 0.3, 0.3, false, 0);
+            speak("左", false);
+        }
+        else if(touch_swipe_right())
+        {
+            player_x++;
+            if(player_x > 10) player_x = 10;
+            sp.play_stereo(1, 0.3, 0.7, false, 0);
+            speak("右", false);
+        }
+        else if(touch_swipe_up())
+        {
+            player_y--;
+            if(player_y < 0) player_y = 0;
+            sp.play_stereo(1, 0.3, 0.5, false, 0);
+            speak("上", false);
+        }
+        else if(touch_swipe_down())
+        {
+            player_y++;
+            if(player_y > 10) player_y = 10;
+            sp.play_stereo(1, 0.3, 0.5, false, 0);
+            speak("下", false);
+        }
+        
+        // 检查双击
+        if(touch_double_tap())
+        {
+            sp.play_stereo(2, 0.6, 0.5, false, 0);
+            speak("技能激活！", true);
+            // 短暂无敌效果
+            for(int i = 0; i < 10; i++)
+            {
+                spawn_target();
+                wait(0.05);
+            }
+        }
+        
+        // 检查长按
+        if(touch_long_press())
+        {
+            sp.play_stereo(3, 0.5, 0.5, false, 0);
+            speak("重新开始游戏", true);
+            start_game();
+            return;
+        }
+    }
+    
+    // 键盘控制（备用）
+    if(key_pressed(KEY_LEFT))
+    {
+        player_x--;
+        if(player_x < 0) player_x = 0;
+    }
+    else if(key_pressed(KEY_RIGHT))
+    {
+        player_x++;
+        if(player_x > 10) player_x = 10;
+    }
+    else if(key_pressed(KEY_UP))
+    {
+        player_y--;
+        if(player_y < 0) player_y = 0;
+    }
+    else if(key_pressed(KEY_DOWN))
+    {
+        player_y++;
+        if(player_y > 10) player_y = 10;
+    }
+    else if(key_pressed(KEY_ESCAPE))
+    {
+        game_state = "menu";
+    }
+}
+
+void spawn_target()
+{
+    target_x = random(0, 10);
+    target_y = random(0, 10);
+}
+
+void update_game()
+{
+    // 检查是否收集到目标
+    if(player_x == target_x && player_y == target_y)
+    {
+        score += 10;
+        sp.play_stereo(3, 0.7, 0.5, false, 0);
+        speak(string(score) + "分", false);
+        spawn_target();
+    }
+    
+    // 检查时间限制（每30秒扣一条命）
+    if(game_timer.elapsed() > 30)
+    {
+        lives--;
+        game_timer.restart();
+        sp.play_stereo(4, 0.5, 0.5, false, 0);
+        speak(string(lives) + "条生命剩余", true);
+        
+        if(lives <= 0)
+        {
+            game_state = "gameover";
+        }
+    }
+}
+
+void render()
+{
+    // 在视障游戏中，我们主要通过声音和语音来反馈
+    // 这里我们使用简单的语音提示来表示玩家位置
+    double pan = (double)player_x / 10.0; // 0-1 表示立体声位置
+    double volume = 0.3 + (double)(10 - player_y) / 20.0; // 根据Y位置调整音量
+    
+    // 播放环境音来表示玩家位置
+    sp.play_stereo(1, volume, pan, false, 0);
+}
+
+void show_game_over()
+{
+    game_state = "gameover";
+    sp.play_stereo(4, 0.8, 0.5, false, 0);
+    
+    speak("游戏结束！", true);
+    wait(0.5);
+    speak("最终得分: " + string(score), true);
+    wait(1.0);
+    
+    // 显示结束菜单
+    menu end_menu;
+    end_menu.add_item("重新开始");
+    end_menu.add_item("返回主菜单");
+    end_menu.add_item("退出");
+    
+    int choice = end_menu.run("游戏结束，请选择:");
+    
+    switch(choice)
+    {
+        case 0:
+            start_game();
+            break;
+        case 1:
+            show_main_menu();
+            break;
+        case 2:
+            exit();
+            break;
+    }
+}
